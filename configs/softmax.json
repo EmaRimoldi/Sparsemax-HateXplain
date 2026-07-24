@@ -1,0 +1,21 @@
+{
+  "variant": "softmax",
+  "model_name": "bert-base-uncased",
+  "target_normalization": "softmax",
+  "attention_source": "post_softmax",
+  "attention_loss": "cross_entropy",
+  "max_length": 128,
+  "batch_size": 16,
+  "epochs": 10,
+  "learning_rate": 0.00002,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.1,
+  "dropout": 0.1,
+  "attention_lambda": 0.001,
+  "supervised_layer": 11,
+  "supervised_heads": 6,
+  "seed": 42,
+  "dataset_path": "data/dataset.json",
+  "splits_path": "data/post_id_divisions.json",
+  "output_dir": "runs/softmax"
+}

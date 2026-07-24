@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparsemax-hatexplain"
+version = "0.1.0"
+description = "Controlled sparsemax-supervised attention experiments on HateXplain"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "lime>=0.2.0.1",
+    "numpy>=1.26,<3",
+    "scikit-learn>=1.4,<2",
+    "scipy>=1.13,<2",
+    "torch>=2.2,<3",
+    "tqdm>=4.66,<5",
+    "transformers>=4.39,<5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2,<2",
+    "pytest>=8,<9",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+hatexplain-train = "hatexplain_sparsemax.train:main"
+hatexplain-stats = "hatexplain_sparsemax.data:main"
+hatexplain-compare-lime = "hatexplain_sparsemax.metrics:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
