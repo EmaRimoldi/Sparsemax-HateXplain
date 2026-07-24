@@ -1,0 +1,10 @@
+{
+  "experiment": "01_core_factorial",
+  "base_config": "../base.json",
+  "axes": {
+    "target_normalization": ["softmax", "sparsemax"],
+    "attention_loss": ["cross_entropy", "sparsemax"],
+    "rationale_source": ["human", "random"],
+    "seed": [13, 17, 23, 42, 101]
+  }
+}

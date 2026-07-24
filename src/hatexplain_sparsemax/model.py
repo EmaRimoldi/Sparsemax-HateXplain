@@ -31,6 +31,11 @@ class SupervisedAttentionBert(nn.Module):
         super().__init__()
         self.bert = bert
         self.experiment = experiment
+        if (
+            experiment.attention_source == "post_softmax"
+            and hasattr(self.bert, "set_attn_implementation")
+        ):
+            self.bert.set_attn_implementation("eager")
         self.dropout = nn.Dropout(experiment.dropout)
         self.classifier = nn.Linear(bert.config.hidden_size, 3)
         self.classifier.weight.data.normal_(mean=0.0, std=bert.config.initializer_range)
@@ -58,6 +63,16 @@ class SupervisedAttentionBert(nn.Module):
                 f"requested {self.experiment.supervised_heads} heads, but BERT has "
                 f"{config.num_attention_heads}"
             )
+        if self.experiment.supervised_head_indices is not None and max(
+            self.experiment.supervised_head_indices
+        ) >= config.num_attention_heads:
+            raise ValueError("a supervised head index is unavailable in this BERT")
+
+    @property
+    def _head_indices(self) -> tuple[int, ...]:
+        if self.experiment.supervised_head_indices is not None:
+            return tuple(self.experiment.supervised_head_indices)
+        return tuple(range(self.experiment.supervised_heads))
 
     def _raw_cls_scores(self, hidden_states: tuple[Tensor, ...], attention_mask: Tensor) -> Tensor:
         layer_index = self.experiment.supervised_layer
@@ -74,7 +89,7 @@ class SupervisedAttentionBert(nn.Module):
         key = split_heads(attention.key(layer_input))
         scores = torch.matmul(query, key.transpose(-1, -2))
         scores = scores / math.sqrt(head_size)
-        scores = scores[:, : self.experiment.supervised_heads, 0, :]
+        scores = scores[:, self._head_indices, 0, :]
         floor = torch.finfo(scores.dtype).min / 2
         return scores.masked_fill(~attention_mask[:, None, :].bool(), floor)
 
@@ -87,23 +102,42 @@ class SupervisedAttentionBert(nn.Module):
         if self.experiment.attention_source == "raw_scores":
             return self._raw_cls_scores(hidden_states, attention_mask)
         layer_attention = attentions[self.experiment.supervised_layer]
-        return layer_attention[:, : self.experiment.supervised_heads, 0, :]
+        return layer_attention[:, self._head_indices, 0, :]
 
     def _rationale_loss(
         self,
         values: Tensor,
         target: Tensor,
         attention_mask: Tensor,
+        rationale_weight: Tensor,
     ) -> Tensor:
         losses = []
         for head in range(self.experiment.supervised_heads):
             head_values = values[:, head, :]
             if self.experiment.attention_loss == "sparsemax":
-                loss = sparsemax_loss(head_values, target, attention_mask)
+                loss = sparsemax_loss(
+                    head_values,
+                    target,
+                    attention_mask,
+                    reduction="none",
+                )
+            elif self.experiment.attention_loss == "cross_entropy":
+                loss = soft_target_cross_entropy(
+                    head_values,
+                    target,
+                    attention_mask,
+                    reduction="none",
+                )
             else:
-                loss = soft_target_cross_entropy(head_values, target, attention_mask)
+                squared_error = (head_values - target).square()
+                active = attention_mask.to(squared_error.dtype)
+                loss = (squared_error * active).sum(dim=-1) / active.sum(dim=-1)
             losses.append(loss)
-        return torch.stack(losses).sum()
+        per_example = torch.stack(losses).sum(dim=0)
+        weights = rationale_weight.to(per_example.dtype)
+        if not torch.any(weights > 0):
+            return values.sum() * 0
+        return (per_example * weights).sum() / weights.sum()
 
     def forward(
         self,
@@ -111,6 +145,7 @@ class SupervisedAttentionBert(nn.Module):
         attention_mask: Tensor,
         labels: Tensor | None = None,
         rationale_target: Tensor | None = None,
+        rationale_weight: Tensor | None = None,
     ) -> ModelOutput:
         outputs = self.bert(
             input_ids=input_ids,
@@ -139,7 +174,17 @@ class SupervisedAttentionBert(nn.Module):
                 outputs.hidden_states,
                 attention_mask,
             )
-            rationale_loss = self._rationale_loss(values, rationale_target, attention_mask)
+            if rationale_weight is None:
+                rationale_weight = torch.ones(
+                    rationale_target.shape[0],
+                    device=rationale_target.device,
+                )
+            rationale_loss = self._rationale_loss(
+                values,
+                rationale_target,
+                attention_mask,
+                rationale_weight,
+            )
             total_loss = total_loss + self.experiment.attention_lambda * rationale_loss
 
         return ModelOutput(

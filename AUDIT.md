@@ -1,6 +1,6 @@
 # Repository audit
 
-Audit date: 2026-07-23
+Audit date: 2026-07-24
 Original code snapshot: `MicheleSmaldone/HateXplain@34ca908`
 
 ## Material findings
@@ -11,7 +11,7 @@ Original code snapshot: `MicheleSmaldone/HateXplain@34ca908`
 | High | Checkpoints and paired LIME JSONL files underlying the paper tables were absent. | Historical results cannot be recomputed or independently checked. | Results are explicitly marked archival; new runs persist configuration, metrics, and checkpoints. |
 | High | Softmax and sparsemax lived on different branches and had different epoch/configuration overrides. | The reported comparison was not controlled by one configuration path. | Both variants use one code path and matched JSON configurations. |
 | Medium | `variance * at_mask` repeated a Python list before `numpy.mean`; it did not scale the scores. | The configured value 5 had no effect on rationale targets. | The parameter was removed. |
-| Medium | The softmax branch supervised post-softmax attention with another log-softmax, while sparsemax supervised raw attention scores with a different loss. | The historical comparison changes target normalization, score source, and loss simultaneously. | This behavior is named and preserved as two historical variants; the configuration fields are explicit for future ablations. |
+| Medium | The softmax branch supervised post-softmax attention with another log-softmax, while sparsemax supervised raw attention scores with a different loss. | The historical comparison changes target normalization, score source, and loss simultaneously. | This behavior is preserved only in the archived reproduction; the core factorial fixes raw scores and crosses target, loss, and semantic content. |
 | Medium | The training entry point overwrote JSON values (`epochs`, `variance`, saving, and lambda). | Configuration files were not authoritative. | Validated JSON is authoritative and serialized with every run. |
 | Medium | LIME scope was inconsistent: code sliced 300 rows, the shell script requested 400 perturbations, and the README described 1,000/523 examples. | Sample size and perturbation count could not be inferred reliably from the repository. | Comparison consumes explicit JSONL paths, pairs IDs, and reports the exact sample count. |
 | Medium | Majority vote used `max(set(labels), key=labels.count)`. | Ties were dependent on set iteration order. | A two-of-three majority is required; ties return `None`. |
@@ -49,12 +49,19 @@ workspace. The original worktree is also retained locally beneath
   `lambda = 0.001`.
 - The paper's numerical results remain archival because their model and explanation
   artifacts are missing.
+- The controlled protocol excludes normal posts from auxiliary rationale
+  supervision; the historical uniform target is preserved only in archival configs.
+- Human and deterministic length-matched random rationales are first-class
+  configuration choices, as are mean, majority, union, and per-annotator masks.
 
 ## Remaining risks
 
 - The refactored training pipeline has unit and smoke coverage but has not yet been
   run through a full GPU training cycle.
-- The two historical variants do not isolate one causal factor. Future experiments
-  should cross target normalization, score source, and loss as separate ablations.
-- LIME is a post-hoc explainer; it does not directly validate the supervised
-  attention distribution.
+- The two historical variants do not isolate one causal factor; they must not be
+  pooled with the new `2 x 2 x 2` factorial.
+- The faithfulness, second-encoder, external-dataset, and per-annotator stages are
+  intentionally gated and do not yet have runnable implementations.
+- LIME is a post-hoc explainer; the new protocol therefore requires independent
+  gradient-based attributions, multiple perturbation operators, random baselines,
+  and normalized curves.

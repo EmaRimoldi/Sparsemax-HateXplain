@@ -2,8 +2,10 @@ import numpy as np
 import torch
 
 from hatexplain_sparsemax.data import (
+    aggregate_word_rationale,
     balanced_class_weights,
     dataset_statistics,
+    length_matched_random_rationale,
     majority_label,
     mean_word_rationale,
     normalize_rationale_target,
@@ -24,6 +26,32 @@ def test_mean_word_rationale_pads_an_absent_third_mask_with_zeros():
     np.testing.assert_allclose(mean_word_rationale(rationales, 3), [0, 1 / 3, 2 / 3])
 
 
+def test_rationale_aggregations_preserve_annotator_variation():
+    rationales = [[1, 0, 1], [0, 0, 1], [0, 1, 0]]
+    np.testing.assert_array_equal(
+        aggregate_word_rationale(rationales, 3, "majority"),
+        [0, 0, 1],
+    )
+    np.testing.assert_array_equal(
+        aggregate_word_rationale(rationales, 3, "union"),
+        [1, 1, 1],
+    )
+    np.testing.assert_array_equal(
+        aggregate_word_rationale(rationales, 3, "annotator_1"),
+        [0, 0, 1],
+    )
+
+
+def test_random_rationale_is_deterministic_and_length_matched():
+    human = np.array([0, 1, 1, 0, 0], dtype=float)
+    first = length_matched_random_rationale(human, "post-7", 13)
+    second = length_matched_random_rationale(human, "post-7", 13)
+
+    np.testing.assert_array_equal(first, second)
+    assert first.sum() == 2
+    assert not np.any((first > 0) & (human > 0))
+
+
 def test_target_normalization_matches_paper_example():
     scores = np.array([0, 1 / 3, 1, 2 / 3, 0], dtype=float)
     mask = np.ones(5, dtype=int)
@@ -33,6 +61,17 @@ def test_target_normalization_matches_paper_example():
 
     np.testing.assert_allclose(soft, [0.124, 0.173, 0.337, 0.242, 0.124], atol=5e-4)
     np.testing.assert_allclose(sparse, [0, 0, 2 / 3, 1 / 3, 0], atol=1e-7)
+
+
+def test_binary_target_preserves_active_mask_values():
+    scores = np.array([0, 1, 0, 1], dtype=float)
+    target = normalize_rationale_target(
+        scores,
+        np.array([1, 1, 1, 0]),
+        "binary",
+        normal_post=False,
+    )
+    np.testing.assert_array_equal(target, [0, 1, 0, 0])
 
 
 def test_normal_target_is_uniform_over_active_sequence():

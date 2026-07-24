@@ -1,8 +1,8 @@
 {
-  "variant": "softmax",
+  "variant": "base",
   "model_name": "bert-base-uncased",
   "target_normalization": "softmax",
-  "attention_source": "post_softmax",
+  "attention_source": "raw_scores",
   "attention_loss": "cross_entropy",
   "max_length": 128,
   "batch_size": 16,
@@ -17,10 +17,10 @@
   "seed": 42,
   "dataset_path": "data/dataset.json",
   "splits_path": "data/post_id_divisions.json",
-  "output_dir": "runs/softmax",
+  "output_dir": "runs/base",
   "rationale_source": "human",
   "rationale_aggregation": "mean",
   "random_rationale_seed": 1729,
-  "normal_rationale_policy": "uniform",
+  "normal_rationale_policy": "ignore",
   "supervised_head_indices": null
 }

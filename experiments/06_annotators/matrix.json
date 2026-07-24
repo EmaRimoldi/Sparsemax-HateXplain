@@ -1,0 +1,13 @@
+{
+  "experiment": "06_annotators",
+  "base_config": "../base.json",
+  "overrides": {
+    "target_normalization": "sparsemax",
+    "attention_loss": "sparsemax",
+    "rationale_source": "human"
+  },
+  "axes": {
+    "rationale_aggregation": ["mean", "majority", "union"],
+    "seed": [13, 17, 23, 42, 101]
+  }
+}

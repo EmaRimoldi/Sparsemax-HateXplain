@@ -1,17 +1,19 @@
 # Sparsemax-supervised attention on HateXplain
 
-This is an independent, cleaned research repository for comparing two
-human-rationale supervision objectives on BERT:
+This is an independent, cleaned research repository for studying
+human-rationale supervision on BERT. It contains both the two historical
+course-project variants and a new controlled experimental programme:
 
 - `softmax`: the historical baseline, which applies cross-entropy to final-layer,
   post-softmax `[CLS]` attention;
 - `sparsemax`: sparsemax targets and the sparsemax Fenchel--Young loss applied to
   raw final-layer `[CLS]`-to-token scores.
 
-In both variants BERT's internal self-attention remains softmax. Six heads in the
-last encoder layer are supervised, while classification uses class-balanced
-cross-entropy. The refactored protocol uses the same data split, seed, epoch count,
-and optimizer settings for both variants.
+In all variants BERT's internal self-attention remains softmax. The core
+experiment factors target geometry, loss geometry, and rationale content while
+holding the supervised raw scores, data, optimizer, layer, and heads fixed. See
+[experiments/README.md](experiments/README.md) for the matrices and
+[experiments/protocol.md](experiments/protocol.md) for the confirmatory analysis.
 
 > **Content warning:** `data/dataset.json` contains hateful and offensive language.
 > It is retained only to make the experiment reproducible.
@@ -55,6 +57,13 @@ hatexplain-train --config configs/sparsemax.json
 The best validation checkpoint and JSON metrics are written beneath `runs/`, which
 is intentionally ignored by Git. Run metadata includes the full configuration and
 the exact split counts. Class weights are computed from the **training** split.
+
+The two files above are archival configurations. To generate the controlled
+factorial, lambda sweep, control, and annotator-sensitivity configurations:
+
+```bash
+python experiments/materialize.py --all
+```
 
 ## Comparing paired LIME outputs
 

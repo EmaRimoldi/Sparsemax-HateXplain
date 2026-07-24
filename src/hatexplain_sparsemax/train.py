@@ -45,6 +45,10 @@ def make_datasets(
         "tokenizer": tokenizer,
         "max_length": config.max_length,
         "target_normalization": config.target_normalization,
+        "rationale_source": config.rationale_source,
+        "rationale_aggregation": config.rationale_aggregation,
+        "random_rationale_seed": config.random_rationale_seed,
+        "normal_rationale_policy": config.normal_rationale_policy,
     }
     return (
         HateXplainDataset(split="train", **common),
@@ -73,7 +77,13 @@ def move_batch(batch: dict[str, Any], device: torch.device) -> dict[str, torch.T
     return {
         key: value.to(device)
         for key, value in batch.items()
-        if key in {"input_ids", "attention_mask", "rationale_target", "label"}
+        if key in {
+            "input_ids",
+            "attention_mask",
+            "rationale_target",
+            "rationale_weight",
+            "label",
+        }
     }
 
 
@@ -95,6 +105,7 @@ def evaluate(
                 attention_mask=tensors["attention_mask"],
                 labels=tensors["label"],
                 rationale_target=tensors["rationale_target"],
+                rationale_weight=tensors["rationale_weight"],
             )
             if output.loss is None:
                 raise RuntimeError("evaluation loss was not computed")
@@ -173,6 +184,7 @@ def train(config: ExperimentConfig) -> dict[str, Any]:
                 attention_mask=tensors["attention_mask"],
                 labels=tensors["label"],
                 rationale_target=tensors["rationale_target"],
+                rationale_weight=tensors["rationale_weight"],
             )
             if output.loss is None:
                 raise RuntimeError("training loss was not computed")

@@ -1,0 +1,10 @@
+{
+  "experiment": "02_lambda_frontier",
+  "base_config": "../base.json",
+  "axes": {
+    "target_normalization": ["softmax", "sparsemax"],
+    "attention_loss": ["cross_entropy", "sparsemax"],
+    "attention_lambda": [0.0001, 0.0003, 0.001, 0.003, 0.01],
+    "seed": [42]
+  }
+}

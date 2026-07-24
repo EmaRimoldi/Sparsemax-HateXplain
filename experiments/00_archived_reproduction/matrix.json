@@ -1,0 +1,28 @@
+{
+  "experiment": "00_archived_reproduction",
+  "base_config": "../base.json",
+  "overrides": {
+    "normal_rationale_policy": "uniform"
+  },
+  "conditions": [
+    {
+      "name": "legacy_softmax",
+      "overrides": {
+        "target_normalization": "softmax",
+        "attention_source": "post_softmax",
+        "attention_loss": "cross_entropy"
+      }
+    },
+    {
+      "name": "legacy_sparsemax",
+      "overrides": {
+        "target_normalization": "sparsemax",
+        "attention_source": "raw_scores",
+        "attention_loss": "sparsemax"
+      }
+    }
+  ],
+  "axes": {
+    "seed": [13, 17, 23, 42, 101]
+  }
+}

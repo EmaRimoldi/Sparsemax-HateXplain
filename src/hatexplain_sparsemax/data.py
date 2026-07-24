@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections import Counter
 from collections.abc import Iterable
@@ -26,8 +27,12 @@ def majority_label(annotations: Iterable[dict[str, Any]]) -> str | None:
     return label if count >= 2 else None
 
 
-def mean_word_rationale(rationales: list[list[int]], token_count: int) -> np.ndarray:
-    """Average three annotator masks, treating an absent mask as all-zero."""
+def aggregate_word_rationale(
+    rationales: list[list[int]],
+    token_count: int,
+    method: str,
+) -> np.ndarray:
+    """Aggregate three annotator masks while making missing annotations explicit."""
     if len(rationales) > 3:
         raise ValueError("HateXplain records must not contain more than three rationale masks")
     padded = [list(mask) for mask in rationales]
@@ -35,7 +40,44 @@ def mean_word_rationale(rationales: list[list[int]], token_count: int) -> np.nda
     masks = np.asarray(padded, dtype=np.float64)
     if masks.ndim != 2 or masks.shape[1] != token_count:
         raise ValueError("rationale masks must align with post_tokens")
-    return masks.mean(axis=0)
+    if method == "mean":
+        return masks.mean(axis=0)
+    if method == "majority":
+        return (masks.sum(axis=0) >= 2).astype(np.float64)
+    if method == "union":
+        return (masks.sum(axis=0) >= 1).astype(np.float64)
+    if method.startswith("annotator_"):
+        index = int(method.rsplit("_", maxsplit=1)[1])
+        if index not in {0, 1, 2}:
+            raise ValueError(f"unsupported annotator index: {index}")
+        return masks[index]
+    raise ValueError(f"unsupported rationale aggregation: {method}")
+
+
+def mean_word_rationale(rationales: list[list[int]], token_count: int) -> np.ndarray:
+    """Backward-compatible alias for the historical mean aggregation."""
+    return aggregate_word_rationale(rationales, token_count, "mean")
+
+
+def length_matched_random_rationale(
+    human_scores: np.ndarray,
+    post_id: str,
+    seed: int,
+) -> np.ndarray:
+    """Sample a deterministic random mask with the human union's token count."""
+    scores = np.asarray(human_scores, dtype=np.float64)
+    selected = np.flatnonzero(scores > 0)
+    output = np.zeros_like(scores)
+    if selected.size == 0:
+        return output
+
+    available = np.flatnonzero(scores <= 0)
+    candidates = available if available.size >= selected.size else np.arange(scores.size)
+    digest = hashlib.sha256(f"{seed}:{post_id}".encode()).digest()
+    rng = np.random.default_rng(int.from_bytes(digest[:8], byteorder="big"))
+    sampled = rng.choice(candidates, size=selected.size, replace=False)
+    output[sampled] = 1.0
+    return output
 
 
 def normalize_rationale_target(
@@ -64,6 +106,8 @@ def normalize_rationale_target(
         values /= values.sum()
     elif method == "sparsemax":
         values = sparsemax_numpy(active_scores)
+    elif method == "binary":
+        values = active_scores
     else:
         raise ValueError(f"unsupported target normalization: {method}")
     target[active] = values
@@ -81,6 +125,10 @@ class HateXplainDataset(Dataset[dict[str, Any]]):
         tokenizer: Any,
         max_length: int,
         target_normalization: str,
+        rationale_source: str = "human",
+        rationale_aggregation: str = "mean",
+        random_rationale_seed: int = 1729,
+        normal_rationale_policy: str = "ignore",
     ) -> None:
         with Path(dataset_path).open(encoding="utf-8") as handle:
             self.records: dict[str, dict[str, Any]] = json.load(handle)
@@ -96,6 +144,10 @@ class HateXplainDataset(Dataset[dict[str, Any]]):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.target_normalization = target_normalization
+        self.rationale_source = rationale_source
+        self.rationale_aggregation = rationale_aggregation
+        self.random_rationale_seed = random_rationale_seed
+        self.normal_rationale_policy = normal_rationale_policy
 
         missing = [post_id for post_id in self.ids if post_id not in self.records]
         if missing:
@@ -121,7 +173,21 @@ class HateXplainDataset(Dataset[dict[str, Any]]):
             return_attention_mask=True,
         )
         word_ids = encoding.word_ids()
-        word_scores = mean_word_rationale(record.get("rationales", []), len(words))
+        word_scores = aggregate_word_rationale(
+            record.get("rationales", []),
+            len(words),
+            self.rationale_aggregation,
+        )
+        if self.rationale_source == "random":
+            word_scores = length_matched_random_rationale(
+                word_scores,
+                post_id,
+                self.random_rationale_seed,
+            )
+        elif self.rationale_source == "none":
+            word_scores = np.zeros_like(word_scores)
+        elif self.rationale_source != "human":
+            raise ValueError(f"unsupported rationale source: {self.rationale_source}")
         aligned = np.zeros(self.max_length, dtype=np.float64)
         for token_index, word_index in enumerate(word_ids):
             if word_index is not None and word_index < len(word_scores):
@@ -134,12 +200,17 @@ class HateXplainDataset(Dataset[dict[str, Any]]):
             method=self.target_normalization,
             normal_post=label == "normal",
         )
+        rationale_weight = float(
+            self.rationale_source != "none"
+            and not (label == "normal" and self.normal_rationale_policy == "ignore")
+        )
 
         return {
             "post_id": post_id,
             "input_ids": torch.tensor(encoding["input_ids"], dtype=torch.long),
             "attention_mask": torch.tensor(attention_mask, dtype=torch.bool),
             "rationale_target": torch.tensor(rationale_target, dtype=torch.float32),
+            "rationale_weight": torch.tensor(rationale_weight, dtype=torch.float32),
             "label": torch.tensor(LABEL_TO_ID[label], dtype=torch.long),
         }
 

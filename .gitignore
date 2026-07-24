@@ -14,6 +14,7 @@ build/
 # Generated experiment artifacts
 checkpoints/
 runs/
+experiments/generated/
 wandb/
 lime_results/
 *.jsonl

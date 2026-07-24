@@ -1,0 +1,29 @@
+{
+  "experiment": "03_controls",
+  "base_config": "../base.json",
+  "conditions": [
+    {
+      "name": "no_supervision",
+      "overrides": {
+        "attention_lambda": 0.0,
+        "rationale_source": "none"
+      }
+    },
+    {
+      "name": "sra_mse_reference",
+      "overrides": {
+        "target_normalization": "binary",
+        "attention_source": "post_softmax",
+        "attention_loss": "mse",
+        "rationale_aggregation": "majority",
+        "attention_lambda": 10.0,
+        "supervised_layer": 8,
+        "supervised_heads": 1,
+        "supervised_head_indices": [7]
+      }
+    }
+  ],
+  "axes": {
+    "seed": [13, 17, 23, 42, 101]
+  }
+}
