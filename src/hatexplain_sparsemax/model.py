@@ -63,10 +63,17 @@ class SupervisedAttentionBert(nn.Module):
         layer_index = self.experiment.supervised_layer
         layer_input = hidden_states[layer_index]
         attention = self.bert.encoder.layer[layer_index].attention.self
-        query = attention.transpose_for_scores(attention.query(layer_input))
-        key = attention.transpose_for_scores(attention.key(layer_input))
+        num_heads = self.bert.config.num_attention_heads
+        head_size = self.bert.config.hidden_size // num_heads
+
+        def split_heads(projected: Tensor) -> Tensor:
+            batch_size, sequence_length, _ = projected.shape
+            return projected.view(batch_size, sequence_length, num_heads, head_size).transpose(1, 2)
+
+        query = split_heads(attention.query(layer_input))
+        key = split_heads(attention.key(layer_input))
         scores = torch.matmul(query, key.transpose(-1, -2))
-        scores = scores / math.sqrt(attention.attention_head_size)
+        scores = scores / math.sqrt(head_size)
         scores = scores[:, : self.experiment.supervised_heads, 0, :]
         floor = torch.finfo(scores.dtype).min / 2
         return scores.masked_fill(~attention_mask[:, None, :].bool(), floor)
